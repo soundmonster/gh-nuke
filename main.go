@@ -55,6 +55,7 @@ var skipClosedPRs bool
 var skipReadNotifications bool
 var dryRun bool
 var numWorkers int
+var haltAfter int
 
 func main() {
 	flag.BoolVar(&skipPRsFromBots, "skip-bots", false, "don't delete notifications on PRs from bots")
@@ -62,6 +63,8 @@ func main() {
 	flag.BoolVar(&skipReadNotifications, "skip-read", false, "don't delete read notifications")
 	flag.BoolVar(&dryRun, "dry-run", false, "dry run without deleting anything")
 	flag.IntVar(&numWorkers, "workers", runtime.NumCPU(), "number of workers")
+	// TODO get rid of this and store offsets in a file
+	flag.IntVar(&haltAfter, "halt-after", 50, "stop after a given number of read messages in a row")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "`gh nuke` deletes all GitHub notifications that are from bots,\nand/or are about closed pull requests\n\nUsage:\n")
 		flag.PrintDefaults()
@@ -98,6 +101,7 @@ func main() {
 }
 
 func streamNotifications(notificationsChan chan<- Notification) {
+	defer close(notificationsChan)
 	requestPath := "notifications?all=true"
 	page := 1
 	client, err := api.DefaultRESTClient()
@@ -105,6 +109,7 @@ func streamNotifications(notificationsChan chan<- Notification) {
 		panic(err)
 	}
 
+	readStreak := 0
 	for {
 		response, err := client.Request(http.MethodGet, requestPath, nil)
 		notifications := []Notification{}
@@ -117,6 +122,14 @@ func streamNotifications(notificationsChan chan<- Notification) {
 			fmt.Println(err)
 		}
 		for _, notification := range notifications {
+			if notification.Unread {
+				readStreak = 0
+			} else {
+				readStreak++
+				if readStreak >= haltAfter {
+					return
+				}
+			}
 			notificationsChan <- notification
 		}
 
@@ -126,7 +139,6 @@ func streamNotifications(notificationsChan chan<- Notification) {
 		}
 		page++
 	}
-	close(notificationsChan)
 }
 
 var linkRE = regexp.MustCompile(`<([^>]+)>;\s*rel="([^"]+)"`)
