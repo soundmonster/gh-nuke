@@ -64,7 +64,7 @@ func main() {
 	flag.BoolVar(&dryRun, "dry-run", false, "dry run without deleting anything")
 	flag.IntVar(&numWorkers, "workers", runtime.NumCPU(), "number of workers")
 	// TODO get rid of this and store offsets in a file
-	flag.IntVar(&haltAfter, "halt-after", 50, "stop after a given number of read messages in a row")
+	flag.IntVar(&haltAfter, "halt-after", 50, "stop after a given number of read messages in a row, set to 0 to never stop")
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "`gh nuke` deletes all GitHub notifications that are from bots,\nand/or are about closed pull requests\n\nUsage:\n")
 		flag.PrintDefaults()
@@ -126,7 +126,7 @@ func streamNotifications(notificationsChan chan<- Notification) {
 				readStreak = 0
 			} else {
 				readStreak++
-				if readStreak >= haltAfter {
+				if haltAfter > 0 && readStreak >= haltAfter {
 					return
 				}
 			}
